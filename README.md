@@ -1,26 +1,39 @@
-Veeam Cloud Connect RESTful API demo
-==================
+# Veeam Cloud Connect RESTful API demo
 
-## Dependencies
+This is a demo portal for Veeam Cloud Connect provisioning.
+
+## 📗 Documentation
+
+### Dependencies
+
 Make sure you download dependencies using `composer`. This project depends on [GuzzleHTTP](https://github.com/guzzle/guzzle) and [Twitter Bootstrap](http://getbootstrap.com/) for CSS.
 
-## Installation
-### 1. Download and install composer
-    curl -sS https://getcomposer.org/installer | /usr/bin/php && /bin/mv -f composer.phar /usr/local/bin/composer
+### Installation
 
-### 2. Clone this repository
-    git clone https://github.com/poulpreben/veeam-cloudconnect.git
+#### 1. Download and install composer
 
-### 3. Initialize Composer
-    composer install
+`curl -sS https://getcomposer.org/installer | /usr/bin/php && /bin/mv -f composer.phar /usr/local/bin/composer`
 
-## Usage
+#### 2. Clone this repository
+
+`git clone https://github.com/poulpreben/veeam-cloudconnect.git`
+
+#### 3. Initialize Composer
+
+`composer install`
+
+### Usage
+
 Point your web browser to `index.php` and you should see something like this:
+
 ![Screenshot](http://i.imgur.com/tcZqcwp.png "Screenshot")
 
-## Configuration
+### Configuration
+
 There are a few variables that need be changed before these sample scripts will work.
-### veeam.class.php
+
+#### veeam.class.php
+
 This script contains the functionality for interacting with Veeam RESTful API.
 
     // Specify default values
@@ -34,7 +47,8 @@ This script contains the functionality for interacting with Veeam RESTful API.
     private $tenant_description     = "Veeam RESTful API demo - default description";
     private $tenant_resource_quota  = 102400;
 
-### veeam.php
+#### veeam.php
+
 This script handles the request from the web form. It has not received too much attention at this point, so it is highly recommended to add in additional santiy checks and form verification before sending it off to the controller.
 
 Make sure to change these values to fit your environment.
@@ -43,11 +57,14 @@ Make sure to change these values to fit your environment.
 
 **Note:** There is currently only added support for HTTP. If you want to use HTTPS, please change settings accordingly in `__construct()` in `veeam.class.php`.
 
-## Distributed under MIT license
-Copyright (c) 2017 VeeamHub
+## ✍ Contributions
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+We welcome contributions from the community! We encourage you to create [issues](https://github.com/VeeamHub/cloudconnect/issues/new/choose) for Bugs & Feature Requests and submit Pull Requests for improving our documentation. For more detailed information, refer to our [Contributing Guide](CONTRIBUTING.md).
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+## 🤝🏾 License
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+* [MIT License](LICENSE)
+
+## 🤔 Questions
+
+If you have any questions or something is unclear, please don't hesitate to [create an issue](https://github.com/VeeamHub/cloudconnect/issues/new/choose) and let us know!
