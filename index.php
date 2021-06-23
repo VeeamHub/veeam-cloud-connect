@@ -19,11 +19,11 @@ require 'vendor/autoload.php';
         $('#form_container').hide();
         $('#loading').show();
       });
-      
+
       $(document).ajaxComplete(function(){
         $('#loading').hide();
       });
-    
+
       $('#veeam_cloud_connect_form').submit(function() {
         $.post($(this).attr('action'), $(this).serialize(), function(json) {
           $('#result').html('<p class="bg-success"> <h1>Username: ' + json.username + '</h1> <h1>Password: ' + json.password + '</h1> </p>')
@@ -32,14 +32,12 @@ require 'vendor/autoload.php';
       });
     });
     </script>
-    
-    <link rel="stylesheet" 
   </head>
   <body>
   <div class="container-fluid">
     <div class="row">
       <div class="col-sm-9">
-        <p class="text-center"><img src="veeam_logo.png" align="center"/></p>
+        <p class="text-center"><img src="veeam_logo.png" align="center" /></p>
         <p class="text-center lead"><b>RESTful API demo for Veeam Cloud Connect</b><br />Type in your information below to instantly provision your Veeam Cloud Connect tenant</p>
         <div id="form_container">
           <form id="veeam_cloud_connect_form" method="POST" action="/veeam.php" role="form">
@@ -82,5 +80,5 @@ require 'vendor/autoload.php';
       </div>
     </div>
   </div>
-  </body>  
+  </body>
 </html>
