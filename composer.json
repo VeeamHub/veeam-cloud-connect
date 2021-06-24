@@ -5,11 +5,15 @@
         {
             "name": "Preben Berg",
             "email": "preben.berg@veeam.com"
+        },
+        {
+            "name": "Chris Arceneaux",
+            "email": "chris.arceneaux@veeam.com"
         }
     ],
     "require": {
-            "guzzlehttp/guzzle": "~5",
-            "components/jquery": "2.1.1",
-            "twbs/bootstrap": "~3.2"
+            "guzzlehttp/guzzle": "~7.3",
+            "components/jquery": "3.5.1",
+            "twbs/bootstrap": "~5.0"
     }
 }
