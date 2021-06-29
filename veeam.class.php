@@ -134,7 +134,7 @@ class Veeam
 
         return $body['data'][0]['siteUid'];
       } else {
-        throw new Exception("VSPC API call was unsuccessful with response code (" . $response->getStatusCode() . ")");
+        throw new Exception("VSPC API call (GET - infrastructure/sites) was unsuccessful with response code (" . $response->getStatusCode() . ")");
       }
     } else {
       throw new Exception("'vcc_server' must be specified in config.php. Please define this value to avoid this error.");
@@ -179,42 +179,93 @@ class Veeam
 
         return $body['data'][0]['instanceUid'];
       } else {
-        throw new Exception("VSPC API call was unsuccessful with response code (" . $response->getStatusCode() . ")");
+        throw new Exception("VSPC API call (GET - infrastructure/backupServers/repositories) was unsuccessful with response code (" . $response->getStatusCode() . ")");
       }
     } else {
       throw new Exception("'vcc_repository' must be specified in config.php. Please define this value to avoid this error.");
     }
   }
 
+  /**
+   * @param $hardware_plan_name
+   *
+   * @return string
+   */
   private function veeam_get_hardware_plan($hardware_plan_name)
   {
     $response = $this->client->get('cloud/hardwarePlans');
+  }
 
-    foreach ($response->xml()->Ref as $hardware_plan) {
-      if (strtolower($hardware_plan_name) == strtolower($hardware_plan['Name'])) {
-        if (array_pop(explode("/", $hardware_plan->Links->Link[0]['Href'])) == $this->backup_server_id) {
-          return (string) $hardware_plan['UID'];
-        }
+  /**
+   * @param $email
+   * @param $company_name
+   *
+   * @return bool
+   */
+  private function veeam_check_for_duplicates($company_name, $email)
+  {
+    // Checking to see if a VSPC Company already exists with one of the defined form values
+    $params = [
+      'query' => 'filter=[{
+        "operation": "and",
+        "items": [
+          {
+            "property": "name",
+            "operation": "equals",
+            "value": "' . $company_name . '"
+          },{
+            "property": "email",
+            "operation": "equals",
+            "value": "' . $email . '"
+          }
+        ]
+      }]'
+    ];
+    $response = $this->client->get('organizations', $params);
+
+    if ($response->getStatusCode() === 200) {
+      $body = json_decode($response->getBody(), true);
+
+      // In case no matches are returned
+      if ($body['meta']['pagingInfo']['total'] === 0) {
+        // no duplicates found
+        return TRUE;
+      } else {
+        // duplicates found
+        return FALSE;
       }
+    } else {
+      throw new Exception("VSPC API call (GET - organizations/companies) was unsuccessful with response code (" . $response->getStatusCode() . ")");
     }
   }
 
   /**
-   * @param $username
+   * @param string $action_id
    *
    * @return bool
    */
-  private function veeam_check_username($username)
+  private function veeam_follow_async_action($action_id)
   {
-    $response = $this->client->get('cloud/tenants?format=Entity');
+    while (TRUE) {
+      $response = $this->client->get('asyncActions/' . $action_id);
 
-    foreach ($response->xml()->CloudTenant as $tenant) {
-      if (strtolower($username) == strtolower($tenant['Name'])) {
-        return true;
+      if ($response->getStatusCode() === 200) {
+        $body = json_decode($response->getBody(), true);
+        switch ($body['data']['status']) {
+          case "running":
+            sleep(10);
+            break;
+          case "succeed":
+            return TRUE;
+          case "canceled":
+            throw new Exception("VSPC API call to create Company Site Resource was cancelled. VSPC Company will most likely need to be deleted to cleanup this failed workflow.");
+          case "failed":
+            throw new Exception("VSPC API call to create Company Site Resource failed with the following error message: " . $body['errors'][0]['message']);
+        }
+      } else {
+        throw new Exception("VSPC API call (GET - asyncActions/" . $action_id . ") was unsuccessful with response code (" . $response->getStatusCode() . ")");
       }
     }
-
-    return false;
   }
 
   /**
@@ -237,6 +288,7 @@ class Veeam
   }
 
   /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/CreateCompany
    * @param string $company_name
    * @param string $alias
    * @param string $tax_id
@@ -255,7 +307,7 @@ class Veeam
    *
    * @return string
    */
-  private function veeam_create_company($company_name, $alias = null, $tax_id = "", $email, $phone = "", $country = null, $state = null, $city = "", $street = "", $description, $zip_code = "", $website = "", $company_id = "", $subscription_plan = null, $enable_alarms = FALSE)
+  private function veeam_create_company($company_name, $alias, $tax_id, $email, $phone, $country, $state, $city, $street, $description, $zip_code, $website, $company_id, $subscription_plan, $enable_alarms)
   {
     // Creating Company in VSPC
     $params = [
@@ -263,22 +315,22 @@ class Veeam
         "resellerUid" => null,
         "organizationInput" => [
           "name" => $company_name,
-          "alias" => null,
-          "taxId" => "",
+          "alias" => $alias,
+          "taxId" => $tax_id,
           "email" => $email,
-          "phone" => "",
-          "country" => null,
-          "state" => null,
-          "city" => "",
-          "street" => "",
+          "phone" => $phone,
+          "country" => $country,
+          "state" => $state,
+          "city" => $city,
+          "street" => $street,
           "notes" => $description,
-          "zipCode" => "",
-          "website" => "",
-          "companyId" => ""
+          "zipCode" => $zip_code,
+          "website" => $website,
+          "companyId" => $company_id
         ],
-        "subscriptionPlanUid" => null,
+        "subscriptionPlanUid" => $subscription_plan,
         "permissions" => [],
-        "IsAlarmDetectEnabled" => false
+        "IsAlarmDetectEnabled" => $enable_alarms
       ]
     ];
     $response = $this->client->post('organizations/companies', $params);
@@ -288,53 +340,74 @@ class Veeam
 
       return $body['data']['instanceUid'];
     } else {
-      throw new Exception("VSPC API call was unsuccessful with response code (" . $response->getStatusCode() . ")");
+      throw new Exception("VSPC API call (POST - organizations/companies) was unsuccessful with response code (" . $response->getStatusCode() . ")");
     }
   }
 
   /**
-   * @param string $tenant_name
-   * @param string $tenant_description
-   * @param int $tenant_resource_quota
-   * @param bool $enabled
-   * @return string $tenant_result JSON encoded
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/CreateCompanySiteResource
+   * @param string $company
+   * @param string $site
+   * @param string $type
+   * @param string $vcd_organization
+   * @param bool $expiration_enabled
+   * @param string $expiration_date
+   * @param string $username
+   * @param string $password
+   * @param string $description
+   * @param bool $throttling_enabled
+   * @param int $throttling_value
+   * @param string $throttling_unit
+   * @param int $max_task
+   * @param bool $insider_protection_enabled
+   * @param int $insider_protection_days
+   * @param string $gateway_selection_type
+   * @param array $gateway_pool_uids
+   * @param bool $gateway_failover_enabled
+   *
+   * @return bool
    */
-  private function veeam_create_tenant($tenant_name = FALSE, $tenant_description = FALSE, $tenant_resource_quota = FALSE, $enabled = 0)
+  private function veeam_create_site_resource($company, $site, $type,  $vcd_organization, $expiration_enabled, $expiration_date, $username, $password, $description, $throttling_enabled, $throttling_value, $throttling_unit, $max_task, $insider_protection_enabled, $insider_protection_days, $gateway_selection_type, $gateway_pool_uids, $gateway_failover_enabled)
   {
-    // Create tenant XML request
-    // Refer to helpcenter.veeam.com for more information
-    $url = 'cloud/tenants';
-    $xml_data = $this->create_xml(
-      'CreateCloudTenantSpec',
-      'CloudTenant',
-      $url,
-      array(
-        'Name'                  => $tenant_name,
-        'Description'           => $tenant_description,
-        'Password'              => $this->tenant_password,
-        'Enabled'               => (int) $enabled,
-        'LeaseExpirationDate'   => date('c', strtotime($this->lease_expiration)),
-        'Resources'             => $this->backup_resource,
-        'ComputeResources'      => $this->replication_resource,
-        'ThrottlingEnabled'     => 'true',
-        'ThrottlingSpeedLimit'  => 1,
-        'ThrottlingSpeedUnit'   => 'MBps',
-        'PublicIpCount'         => 0,
-        'BackupServerUid'  => $this->backup_server_urn
-      )
-    );
+    // Creating VSPC Site Resource (Cloud Connect Tenant)
+    $params = [
+      'json' => [
+        "siteUid" => $site,
+        "cloudTenantType" => $type,
+        "vCloudOrganizationUid" => $vcd_organization,
+        "leaseExpirationEnabled" => $expiration_enabled,
+        "leaseExpirationDate" => $expiration_date,
+        "ownerCredentials" => [
+          "userName" => $username,
+          "password" => $password
+        ],
+        "description" => $description,
+        "throttlingEnabled" => $throttling_enabled,
+        "throttlingValue" => $throttling_value,
+        "throttlingUnit" => $throttling_unit,
+        "maxConcurrentTask" => $max_task,
+        "backupProtectionEnabled" => $insider_protection_enabled,
+        "backupProtectionPeriodDays" => $insider_protection_days,
+        "gatewaySelectionType" => $gateway_selection_type,
+        "gatewayPoolsUids" => $gateway_pool_uids,
+        "isGatewayFailoverEnabled" => $gateway_failover_enabled
+      ]
+    ];
+    $response = $this->client->post('organizations/companies/' . $company . '/sites', $params);
 
-    // POST XML request to RESTful API
-    $response = $this->client->post($url, array('body' => $xml_data, "headers" => array('Content-Type' => 'text/xml')));
+    switch (TRUE) {
+      case ($response->getStatusCode() === 200):
+        $body = json_decode($response->getBody(), true);
+        return $body['data']['siteUid'];
+      case ($response->getStatusCode() === 202):
+        $location = ($response->getHeader('Location'))[0]; //this is a URL containing the async action ID
+        // Using regex to extract async action ID
+        preg_match('/([^\/]+$)/', $location, $matches);
 
-    // Wait for tenant create task to finish
-    $tenant_task_id = (string) $response->xml()->TaskId;
-    $tenant_id = $this->veeam_task_subscriber($tenant_task_id, 'CloudTenant');
-
-    // Send output to web frontend
-    $result = array('username' => $this->tenant_name, 'password' => $this->tenant_password, 'quota' => $this->tenant_resource_quota);
-
-    return json_encode($result);
+        return $this->veeam_follow_async_action($matches[0]); //follows async action to completion
+      default:
+        throw new Exception("VSPC API call (POST - organizations/companies/" . $company . "/sites) was unsuccessful with response code (" . $response->getStatusCode() . ")");
+    }
   }
 
   /**
@@ -342,25 +415,49 @@ class Veeam
    * @param string $email
    * @param string $full_name
    * @param string $company_name
-   * @param int $resource_quota
-   * @param bool $enabled
-   * @return string $tenant_result JSON encoded
+   *
    */
   public function run($username, $email, $full_name, $company_name)
   {
-    $config = include('config.php');
+    // checks for already existing customers with identical information
+    if ($this->veeam_check_for_duplicates($company_name, $email)) {
+      $config = include('config.php');
 
-    // Retrieving UIDs configured values
-    $this->cloud_connect_site = $this->veeam_get_cloud_connect_site($config['vcc_server']);
-    $this->cloud_connect_repository = $this->veeam_get_cloud_connect_repository($this->cloud_connect_site, $config['vcc_repository']);
+      // Retrieving UIDs configured values
+      $this->cloud_connect_site = $this->veeam_get_cloud_connect_site($config['vcc_server']);
+      $this->cloud_connect_repository = $this->veeam_get_cloud_connect_repository($this->cloud_connect_site, $config['vcc_repository']);
 
-    // Setting description
-    $description = $full_name . " - " . $company_name;
+      // Setting description
+      $description = $full_name . " - " . $company_name;
 
-    // Creating Company in VSPC
-    $this->company = $this->veeam_create_company($company_name, null, "", $email, "", null, null, "", "", $description, "", "", "", null, FALSE);
+      // Setting account expiration time
+      $lease_expiration = date('c', strtotime($config['tenant_account_expiration_date']));
 
-    echo $this->company;
-    // echo $this->veeam_create_tenant($tenant_name, $tenant_description, $tenant_resource_quota, $enabled);
+      // Creating VSPC Company
+      $this->company = $this->veeam_create_company($company_name, null, null, $email, null, null, null, null, null, $description, null, null, null, null, FALSE);
+
+      // Creating VSPC Site Resource (Cloud Connect Tenant)
+      $this->cloud_connect_site_resource = $this->veeam_create_site_resource($this->company, $this->cloud_connect_site, "General",  null, $config['tenant_account_expiration'], $lease_expiration, $username, $this->tenant_password, $description, FALSE, 1, "MbytePerSec", 1, FALSE, 7, "StandaloneGateways", null, FALSE);
+
+      // // Creating Backup Resource if specified
+      // if ($this->backup_create) {
+      //   echo "Creating Backup Resource...\r\n";
+      // }
+
+      // // Creating Replication Resource if specified
+      // if ($this->replication_create) {
+      //   echo "Creating Replication Resource...\r\n";
+      // }
+
+      // Creating output for web front-end
+      $quota = $config['backup_resource_quota'] / 1024; //converting MB to GB
+      $result = array('username' => $username, 'password' => $this->tenant_password, 'quota' => $quota . 'GB');
+    } else { // duplicate customer found
+      // Creating output for web front-end
+      $result = array('error' => 'Unable to provision account.');
+    }
+
+    // Outputting result to web page
+    echo json_encode($result);
   }
 }
