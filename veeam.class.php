@@ -14,22 +14,15 @@ class Veeam
 {
   private $client;
   private $access_token;
-  private $cloud_connect_site;
-  private $cloud_connect_repository;
-  private $backup_server_urn;
-  private $backup_server_id;
-  private $backup_repository_urn;
-  private $backup_repository_id;
-  private $hardware_plan_urn;
+  private $cloud_connect_site_id;
+  private $cloud_connect_repository_id;
+  private $cloud_connect_hardware_plan_id;
   private $backup_create;
-  private $backup_resource;
   private $replication_create;
-  private $replication_resource;
   private $company_id;
-  private $tenant_name;
-  private $tenant_username;
   private $tenant_description;
   private $tenant_password; // Will be randomized in __construct();
+  private $tenant_lease_expiration;
 
   /**
    * @param str $base_url
@@ -83,7 +76,7 @@ class Veeam
     $this->backup_create = $backup;
     $this->replication_create = $replication;
 
-    // Generating random password for new tenant account
+    // Generating random password for new account
     $this->tenant_password = $this->veeam_generate_password($config['tenant_password_length']);
   }
 
@@ -107,6 +100,7 @@ class Veeam
   }
 
   /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/GetSites
    * @param str $name
    *
    * @return string
@@ -142,6 +136,7 @@ class Veeam
   }
 
   /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/GetBackupRepositories
    * @param $backup_server_id
    * @param $backup_repository_name
    *
@@ -163,6 +158,10 @@ class Veeam
               "property": "name",
               "operation": "equals",
               "value": "' . $name . '"
+            },{
+              "property": "isCloud",
+              "operation": "equals",
+              "value": true
             }
           ]
         }]'
@@ -187,16 +186,53 @@ class Veeam
   }
 
   /**
-   * @param $hardware_plan_name
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/GetBackupHardwarePlans
+   * @param string $site_id
+   * @param string $name
    *
    * @return string
    */
-  private function veeam_get_hardware_plan($hardware_plan_name)
+  private function veeam_get_cloud_connect_hardware_plan($site_id, $name = FALSE)
   {
-    $response = $this->client->get('cloud/hardwarePlans');
+    if ($name <> FALSE) {
+      // Retrieving Cloud Connect Site matching the name specified
+      $params = [
+        'query' => 'filter=[{
+          "operation": "and",
+          "items": [
+            {
+              "property": "backupServerUid",
+              "operation": "equals",
+              "value": "' . $site_id . '"
+            },{
+              "property": "name",
+              "operation": "equals",
+              "value": "' . $name . '"
+            }
+          ]
+        }]'
+      ];
+      $response = $this->client->get('infrastructure/sites/hardwarePlans', $params);
+
+      if ($response->getStatusCode() === 200) {
+        $body = json_decode($response->getBody(), true);
+
+        // In case no matches are returned
+        if ($body['meta']['pagingInfo']['total'] === 0) {
+          throw new Exception("No Hardware Plan found. Please verify 'hardware_plan' located in config.php matches what's been defined in the VSPC web UI.");
+        }
+
+        return $body['data'][0]['instanceUid'];
+      } else {
+        throw new Exception("VSPC API call (GET - infrastructure/sites/hardwarePlans) was unsuccessful with response code (" . $response->getStatusCode() . ")");
+      }
+    } else {
+      throw new Exception("'hardware_plan' must be specified in config.php. Please define this value to avoid this error.");
+    }
   }
 
   /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/GetOrganizations
    * @param $email
    * @param $company_name
    *
@@ -240,12 +276,17 @@ class Veeam
   }
 
   /**
-   * @param string $action_id
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/GetAsyncActionInfo
+   * @param string $location
    *
    * @return bool
    */
-  private function veeam_follow_async_action($action_id)
+  private function veeam_follow_async_action($location)
   {
+    // Using regex to extract async action ID
+    preg_match('/([^\/]+$)/', $location, $matches);
+    $action_id = $matches[0];
+
     while (TRUE) {
       $response = $this->client->get('asyncActions/' . $action_id);
 
@@ -258,9 +299,9 @@ class Veeam
           case "succeed":
             return TRUE;
           case "canceled":
-            throw new Exception("VSPC API call to create Company Site Resource was cancelled. VSPC Company will most likely need to be deleted to cleanup this failed workflow.");
+            throw new Exception("VSPC API call to " . $body['data']['actionName'] . " was cancelled. VSPC Company will most likely need to be deleted to cleanup this failed workflow.");
           case "failed":
-            throw new Exception("VSPC API call to create Company Site Resource failed with the following error message: " . $body['errors'][0]['message']);
+            throw new Exception("VSPC API call to " . $body['data']['actionName'] . " failed with the following error message: " . $body['errors'][0]['message']);
         }
       } else {
         throw new Exception("VSPC API call (GET - asyncActions/" . $action_id . ") was unsuccessful with response code (" . $response->getStatusCode() . ")");
@@ -269,6 +310,8 @@ class Veeam
   }
 
   /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/GetCurrentUser
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/RevokeAuthenticationToken
    * @return bool
    */
   private function veeam_delete_session()
@@ -284,6 +327,38 @@ class Veeam
       return $response->getStatusCode() == 200;
     } else {
       return FALSE;
+    }
+  }
+
+  /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/PatchCompany
+   * @param string $company_id
+   *
+   * @return bool
+   */
+  private function veeam_disable_company($company_id)
+  {
+    // Creating Cloud Connect Replication Resource
+    $params = [
+      'json' => [
+        [
+          "value" => "Disabled",
+          "path" => "/status",
+          "op" => "replace"
+        ]
+      ]
+    ];
+    $response = $this->client->patch('organizations/companies/' . $company_id, $params);
+
+    switch (TRUE) {
+      case ($response->getStatusCode() === 200):
+        return TRUE;
+      case ($response->getStatusCode() === 202):
+        $location = ($response->getHeader('Location'))[0]; //this is a URL containing the async action ID
+
+        return $this->veeam_follow_async_action($location); //follows async action to completion
+      default:
+        throw new Exception("VSPC API call (POST - organizations/companies/" . $company_id . ") was unsuccessful with response code (" . $response->getStatusCode() . ")");
     }
   }
 
@@ -346,8 +421,8 @@ class Veeam
 
   /**
    * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/CreateCompanySiteResource
-   * @param string $company
-   * @param string $site
+   * @param string $company_id
+   * @param string $site_id
    * @param string $type
    * @param string $vcd_organization
    * @param bool $expiration_enabled
@@ -367,12 +442,12 @@ class Veeam
    *
    * @return bool
    */
-  private function veeam_create_site_resource($company, $site, $type,  $vcd_organization, $expiration_enabled, $expiration_date, $username, $password, $description, $throttling_enabled, $throttling_value, $throttling_unit, $max_task, $insider_protection_enabled, $insider_protection_days, $gateway_selection_type, $gateway_pool_uids, $gateway_failover_enabled)
+  private function veeam_create_site_resource($company_id, $site_id, $type,  $vcd_organization, $expiration_enabled, $expiration_date, $username, $password, $description, $throttling_enabled, $throttling_value, $throttling_unit, $max_task, $insider_protection_enabled, $insider_protection_days, $gateway_selection_type, $gateway_pool_uids, $gateway_failover_enabled)
   {
     // Creating VSPC Site Resource (Cloud Connect Tenant)
     $params = [
       'json' => [
-        "siteUid" => $site,
+        "siteUid" => $site_id,
         "cloudTenantType" => $type,
         "vCloudOrganizationUid" => $vcd_organization,
         "leaseExpirationEnabled" => $expiration_enabled,
@@ -393,20 +468,142 @@ class Veeam
         "isGatewayFailoverEnabled" => $gateway_failover_enabled
       ]
     ];
-    $response = $this->client->post('organizations/companies/' . $company . '/sites', $params);
+    $response = $this->client->post('organizations/companies/' . $company_id . '/sites', $params);
 
     switch (TRUE) {
       case ($response->getStatusCode() === 200):
-        $body = json_decode($response->getBody(), true);
-        return $body['data']['siteUid'];
+        return TRUE;
       case ($response->getStatusCode() === 202):
         $location = ($response->getHeader('Location'))[0]; //this is a URL containing the async action ID
-        // Using regex to extract async action ID
-        preg_match('/([^\/]+$)/', $location, $matches);
 
-        return $this->veeam_follow_async_action($matches[0]); //follows async action to completion
+        return $this->veeam_follow_async_action($location); //follows async action to completion
       default:
-        throw new Exception("VSPC API call (POST - organizations/companies/" . $company . "/sites) was unsuccessful with response code (" . $response->getStatusCode() . ")");
+        throw new Exception("VSPC API call (POST - organizations/companies/" . $company_id . "/sites) was unsuccessful with response code (" . $response->getStatusCode() . ")");
+    }
+  }
+
+  /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/CreateCompanySiteBackupResource
+   * @param string $company_id
+   * @param string $site_id
+   * @param string $repo_id
+   * @param string $repo_name
+   * @param int $quota_storage
+   * @param string $quota_server
+   * @param bool $quota_server_unlimited
+   * @param string $quota_workstation
+   * @param bool $quota_workstation_unlimited
+   * @param string $quota_vm
+   * @param bool $quota_vm_unlimited
+   * @param bool $wan_acceleration_enabled
+   * @param string $wan_accelerator_id
+   * @param bool $default
+   *
+   * @return bool
+   */
+  private function veeam_create_backup_resource($company_id, $site_id, $repo_id, $repo_name, $quota_storage, $quota_server, $quota_server_unlimited, $quota_workstation, $quota_workstation_unlimited, $quota_vm, $quota_vm_unlimited, $wan_acceleration_enabled, $wan_accelerator_id, $default)
+  {
+    // Creating Cloud Connect Backup Resource
+    $params = [
+      'json' => [
+        "repositoryUid" => $repo_id,
+        "cloudRepositoryName" => $repo_name,
+        "storageQuota" => $quota_storage,
+        "serversQuota" => $quota_server,
+        "isServersQuotaUnlimited" => $quota_server_unlimited,
+        "workstationsQuota" => $quota_workstation,
+        "isWorkstationsQuotaUnlimited" => $quota_workstation_unlimited,
+        "vmsQuota" => $quota_vm,
+        "isVmsQuotaUnlimited" => $quota_vm_unlimited,
+        "isWanAccelerationEnabled" => $wan_acceleration_enabled,
+        "wanAcceleratorUid" => $wan_accelerator_id,
+        "isDefault" => $default
+      ]
+    ];
+    $response = $this->client->post('organizations/companies/' . $company_id . '/sites/' . $site_id . '/backupResources', $params);
+
+    switch (TRUE) {
+      case ($response->getStatusCode() === 200):
+        return TRUE;
+      case ($response->getStatusCode() === 202):
+        $location = ($response->getHeader('Location'))[0]; //this is a URL containing the async action ID
+
+        return $this->veeam_follow_async_action($location); //follows async action to completion
+      default:
+        throw new Exception("VSPC API call (POST - organizations/companies/" . $company_id . "/sites/" . $site_id . "/backupResources) was unsuccessful with response code (" . $response->getStatusCode() . ")");
+    }
+  }
+
+  /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/CreateCompanySiteReplicationResource
+   * @param string $company_id
+   * @param string $site_id
+   * @param string $hardware_plan_id
+   * @param bool $wan_acceleration_enabled
+   * @param string $wan_accelerator_id
+   * @param bool $failover_enabled
+   * @param bool $public_ips_enabled
+   * @param int $public_ips
+   *
+   * @return bool
+   */
+  private function veeam_create_replication_resource($company_id, $site_id, $hardware_plan_id, $wan_acceleration_enabled, $wan_accelerator_id, $failover_enabled, $public_ips_enabled, $public_ips)
+  {
+    // Creating Cloud Connect Replication Resource
+    $params = [
+      'json' => [
+        "hardwarePlans" => [
+          [
+            "hardwarePlanUid" => $hardware_plan_id,
+            "isWanAccelerationEnabled" => $wan_acceleration_enabled,
+            "wanAcceleratorUid" => $wan_accelerator_id
+          ]
+        ],
+        "isFailoverCapabilitiesEnabled" => $failover_enabled,
+        "isPublicAllocationEnabled" => $public_ips_enabled,
+        "numberOfPublicIps" => $public_ips
+      ]
+    ];
+    $response = $this->client->post('organizations/companies/' . $company_id . '/sites/' . $site_id . '/replicationResources', $params);
+
+    switch (TRUE) {
+      case ($response->getStatusCode() === 200):
+        return TRUE;
+      case ($response->getStatusCode() === 202):
+        $location = ($response->getHeader('Location'))[0]; //this is a URL containing the async action ID
+
+        return $this->veeam_follow_async_action($location); //follows async action to completion
+      default:
+        throw new Exception("VSPC API call (POST - organizations/companies/" . $company_id . "/sites/" . $site_id . "/replicationResources) was unsuccessful with response code (" . $response->getStatusCode() . ")");
+    }
+  }
+
+  /**
+   * https://helpcenter.veeam.com/docs/vac/rest/reference/vspc-rest.html#operation/SendWelcomeEmailToCompany
+   * @param string $company_id
+   * @param string $password
+   *
+   * @return bool
+   */
+  private function veeam_send_welcome_email($company_id, $password)
+  {
+    // Sending welcome email to customer
+    $params = [
+      'json' => [
+        "password" => $password
+      ]
+    ];
+    $response = $this->client->post('organizations/companies/' . $company_id . '/welcomeEmail', $params);
+
+    switch (TRUE) {
+      case ($response->getStatusCode() === 200):
+        return TRUE;
+      case ($response->getStatusCode() === 202):
+        $location = ($response->getHeader('Location'))[0]; //this is a URL containing the async action ID
+
+        return $this->veeam_follow_async_action($location); //follows async action to completion
+      default:
+        throw new Exception("VSPC API call (POST - organizations/companies/" . $company_id . "/welcomeEmail) was unsuccessful with response code (" . $response->getStatusCode() . ")");
     }
   }
 
@@ -424,37 +621,55 @@ class Veeam
       $config = include('config.php');
 
       // Retrieving UIDs configured values
-      $this->cloud_connect_site = $this->veeam_get_cloud_connect_site($config['vcc_server']);
-      $this->cloud_connect_repository = $this->veeam_get_cloud_connect_repository($this->cloud_connect_site, $config['vcc_repository']);
+      $this->cloud_connect_site_id = $this->veeam_get_cloud_connect_site($config['vcc_server']);
+      $this->cloud_connect_repository_id = $this->veeam_get_cloud_connect_repository($this->cloud_connect_site_id, $config['vcc_repository']);
 
       // Setting description
-      $description = $full_name . " - " . $company_name;
+      $this->tenant_description = $full_name . " - " . $company_name;
 
       // Setting account expiration time
-      $lease_expiration = date('c', strtotime($config['tenant_account_expiration_date']));
+      $this->tenant_lease_expiration = date('c', strtotime($config['tenant_account_expiration_date']));
 
       // Creating VSPC Company
-      $this->company = $this->veeam_create_company($company_name, null, null, $email, null, null, null, null, null, $description, null, null, null, null, FALSE);
+      $this->company_id = $this->veeam_create_company($company_name, null, null, $email, null, null, null, null, null, $this->tenant_description, null, null, null, null, FALSE);
 
       // Creating VSPC Site Resource (Cloud Connect Tenant)
-      $this->cloud_connect_site_resource = $this->veeam_create_site_resource($this->company, $this->cloud_connect_site, "General",  null, $config['tenant_account_expiration'], $lease_expiration, $username, $this->tenant_password, $description, FALSE, 1, "MbytePerSec", 1, FALSE, 7, "StandaloneGateways", null, FALSE);
+      $this->cloud_connect_site_resource = $this->veeam_create_site_resource($this->company_id, $this->cloud_connect_site_id, "General",  null, $config['tenant_account_expiration'], $this->tenant_lease_expiration, $username, $this->tenant_password, $this->tenant_description, FALSE, 1, "MbytePerSec", 1, FALSE, 7, "StandaloneGateways", null, FALSE);
 
-      // // Creating Backup Resource if specified
-      // if ($this->backup_create) {
-      //   echo "Creating Backup Resource...\r\n";
-      // }
+      // Should newly created account be enabled?
+      if (!$config['tenant_enabled']) {
+        // Disabling newly created Company
+        $this->veeam_disable_company($this->company_id);
+      }
 
-      // // Creating Replication Resource if specified
-      // if ($this->replication_create) {
-      //   echo "Creating Replication Resource...\r\n";
-      // }
+      // Create Backup Resource?
+      if ($this->backup_create) {
+        // Setting Cloud Repository name
+        $repo_name = 'cloud-' . $company_name . '-01';
+
+        // Creating Backup Resource
+        $this->veeam_create_backup_resource($this->company_id, $this->cloud_connect_site_id, $this->cloud_connect_repository_id, $repo_name, $config['backup_resource_quota'], null, TRUE, null, TRUE, null, TRUE, FALSE, null, TRUE);
+      }
+
+      // Create Replication Resource?
+      if ($this->replication_create) {
+        // Retrieving Hardware Plan ID
+        $this->cloud_connect_hardware_plan_id = $this->veeam_get_cloud_connect_hardware_plan($this->cloud_connect_site_id, $config['hardware_plan']);
+
+        // Creating Replication Resource
+        $this->veeam_create_replication_resource($this->company_id, $this->cloud_connect_site_id, $this->cloud_connect_hardware_plan_id, FALSE, null, FALSE, FALSE, 0);
+      }
 
       // Creating output for web front-end
       $quota = $config['backup_resource_quota'] / 1024; //converting MB to GB
       $result = array('username' => $username, 'password' => $this->tenant_password, 'quota' => $quota . 'GB');
-    } else { // duplicate customer found
-      // Creating output for web front-end
-      $result = array('error' => 'Unable to provision account.');
+
+      // Sending welcome email to customer
+      if ($config['tenant_enabled']) { //unable to send email if company disabled
+        $this->veeam_send_welcome_email($this->company_id, $this->tenant_password);
+      }
+    } else {
+      // duplicate customer found
     }
 
     // Outputting result to web page

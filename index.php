@@ -10,8 +10,7 @@ require 'vendor/autoload.php';
   <head>
     <title>Veeam RESTful demo</title>
     <link rel="stylesheet" type="text/css" href="vendor/twbs/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" type="text/css" href="vendor/twbs/bootstrap/dist/css/bootstrap-theme.min.css" />
-    <script type="text/javascript" src="components/jquery/jquery.min.js"></script>
+    <script type="text/javascript" src="vendor/components/jquery/jquery.min.js"></script>
     <script type="text/javascript" src="vendor/twbs/bootstrap/dist/js/bootstrap.min.js"></script>
     <script type="text/javascript">
     $(document).ready(function() {
@@ -45,6 +44,10 @@ require 'vendor/autoload.php';
             <div class="form-group">
               <label for="username">Username</label>
               <input type="text" name="username" class="form-control" placeholder="Enter desired username" />
+            </div>
+            <div class="form-group">
+              <label for="email">Email</label>
+              <input type="email" name="email" class="form-control" placeholder="Enter email address" />
             </div>
             <div class="form-group">
               <label for="full_name">Full name</label>
