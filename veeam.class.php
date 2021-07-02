@@ -267,8 +267,7 @@ class Veeam
         // no duplicates found
         return TRUE;
       } else {
-        // duplicates found
-        return FALSE;
+        throw new Exception("Duplicate VSPC Company found. Terminating account creation.");
       }
     } else {
       throw new Exception("VSPC API call (GET - organizations/companies) was unsuccessful with response code (" . $response->getStatusCode() . ")");
@@ -616,9 +615,11 @@ class Veeam
    */
   public function run($username, $email, $full_name, $company_name)
   {
-    // checks for already existing customers with identical information
-    if ($this->veeam_check_for_duplicates($company_name, $email)) {
-      $config = include('config.php');
+    $config = include('config.php');
+
+    try {
+      // checks for already existing customers with identical information
+      $this->veeam_check_for_duplicates($company_name, $email);
 
       // Retrieving UIDs configured values
       $this->cloud_connect_site_id = $this->veeam_get_cloud_connect_site($config['vcc_server']);
@@ -660,16 +661,20 @@ class Veeam
         $this->veeam_create_replication_resource($this->company_id, $this->cloud_connect_site_id, $this->cloud_connect_hardware_plan_id, FALSE, null, FALSE, FALSE, 0);
       }
 
-      // Creating output for web front-end
-      $quota = $config['backup_resource_quota'] / 1024; //converting MB to GB
-      $result = array('username' => $username, 'password' => $this->tenant_password, 'quota' => $quota . 'GB');
-
-      // Sending welcome email to customer
-      if ($config['tenant_enabled']) { //unable to send email if company disabled
+      // Is newly created account enabled?
+      if ($config['tenant_enabled']) { // email sent
+        // Sending welcome email to customer
         $this->veeam_send_welcome_email($this->company_id, $this->tenant_password);
+
+        // Creating output for web front-end
+        $result = $config['message_success_enabled'];
+      } else { // email not sent
+        // Creating output for web front-end
+        $result = $config['message_success_disabled'];
       }
-    } else {
-      // duplicate customer found
+    } catch (Exception $e) {
+      // Creating output for web front-end
+      $result = $config['message_failure'];
     }
 
     // Outputting result to web page

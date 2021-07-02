@@ -25,7 +25,7 @@ require 'vendor/autoload.php';
 
       $('#veeam_cloud_connect_form').submit(function() {
         $.post($(this).attr('action'), $(this).serialize(), function(json) {
-          $('#result').html('<p class="bg-success"> <h1>Username: ' + json.username + '</h1> <h1>Password: ' + json.password + '</h1> </p>')
+          $('#result').html('<p class="bg-success"> <h2>' + json.title + '</h2>' + json.message + '</p>')
         }, 'json');
         return false;
       });
@@ -76,8 +76,8 @@ require 'vendor/autoload.php';
           </form>
         </div>
         <div id="loading" style="display:none;">
-          <h1>Please wait...</h1>
-          We are provisioning your user account. It might take a minute or two.
+          <h2>Please wait...</h2>
+          We are provisioning your user account. This can take a few minutes.
         </div>
         <div id="result"></div>
       </div>

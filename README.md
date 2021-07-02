@@ -26,7 +26,7 @@ Make sure you download dependencies using `composer`. This project depends on [G
 
 Point your web browser to `index.php` and you should see something like this:
 
-![Screenshot](http://i.imgur.com/tcZqcwp.png "Screenshot")
+![Screenshot](example_form.png)
 
 ### Configuration
 
@@ -39,10 +39,10 @@ This script contains the functionality for interacting with Veeam RESTful API.
     // Specify default values
     private $backup_server          = "vbr9.vclass.local";
     private $backup_repository      = "Default Backup Repository";
-  
+
     private $hardware_plan          = "hwplan-default";
     private $lease_expiration       = "+3 months"; // see http://php.net/manual/en/function.strtotime.php
-  
+
     private $tenant_name            = "default-tenant-name"; // This should never happen. If so, you need to sanitize your input better.
     private $tenant_description     = "Veeam RESTful API demo - default description";
     private $tenant_resource_quota  = 102400;
