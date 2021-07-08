@@ -6,7 +6,7 @@ return [
     'vspc_rest_pass' => 'password',
     'vspc_rest_timeout' => 10.0, #in seconds
     'vspc_tls_validation' => FALSE, #this should be TRUE in production environments
-    # VCC values
+    # VCC values (as seen in VSPC)
     'vcc_server' => 'vcc.contoso.local',
     'vcc_repository' => 'Default Backup Repository',
     # VCC default tenant values
