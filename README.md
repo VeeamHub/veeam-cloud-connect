@@ -6,8 +6,11 @@ This is a demo portal for Veeam Cloud Connect provisioning. This project uses th
 
 ### Requirements
 
+* Veeam Service Provider Console v5
+* Veeam Cloud Connect v11
+  * *environment managed by VSPC*
 * Web server w/PHP support
-  * *Apache was used in my testing*
+  * *Ubuntu 20.04 w/Apache was used in my testing. Other OSes and web servers should work but are untested.*
 * [Composer](https://getcomposer.org/)
   * *Manages project dependencies*
 
