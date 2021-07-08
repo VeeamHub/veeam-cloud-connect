@@ -12,7 +12,7 @@ header('Content-Type: application/json');
 
 if (isset($_POST['action']) && (isset($_POST['create_backup']) || isset($_POST['create_replication'])) && $_POST['action'] == "create_tenant") {
 
-  $config = include('config.php');
+  $config = include('config/config.php');
 
   $rest_url   = $config['vspc_rest_url'];
   $rest_user  = $config['vspc_rest_user'];

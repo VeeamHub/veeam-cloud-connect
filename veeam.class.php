@@ -33,7 +33,7 @@ class Veeam
    */
   public function __construct($base_url, $username, $password, $backup, $replication)
   {
-    $config = include('config.php');
+    $config = include('config/config.php');
 
     // Initializing API client
     $this->client = new GuzzleHttp\Client([
@@ -615,7 +615,7 @@ class Veeam
    */
   public function run($username, $email, $full_name, $company_name)
   {
-    $config = include('config.php');
+    $config = include('config/config.php');
 
     try {
       // checks for already existing customers with identical information
