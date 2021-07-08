@@ -1,12 +1,12 @@
 <?php
 return [
     # Veeam Service Provider Console RESTful API connection
-    'vspc_rest_url' => 'https://vspc.contoso.local/api/v3/', #default port is 1280
+    'vspc_rest_url' => 'https://vspc.contoso.local:1280/api/v3/', #default port is 1280
     'vspc_rest_user' => 'contoso\jdoe',
     'vspc_rest_pass' => 'password',
     'vspc_rest_timeout' => 10.0, #in seconds
     'vspc_tls_validation' => FALSE, #this should be TRUE in production environments
-    # VCC values
+    # VCC values (as seen in VSPC)
     'vcc_server' => 'vcc.contoso.local',
     'vcc_repository' => 'Default Backup Repository',
     # VCC default tenant values
@@ -25,7 +25,7 @@ return [
         'message' => "You'll receive an email shortly with connection information."
     ),
     'message_success_disabled' => array(
-        #provisioning success w/account enabled
+        #provisioning success w/account disabled (see 'tenant_enabled' value)
         'title' => 'Account provisioned successfully!',
         'message' => "You'll receive an email within the next 48 hours with connection information."
     ),
