@@ -1,7 +1,7 @@
 <?php
 return [
     # Veeam Service Provider Console RESTful API connection
-    'vspc_rest_url' => 'https://vspc.contoso.local/api/v3/', #default port is 1280
+    'vspc_rest_url' => 'https://vspc.contoso.local:1280/api/v3/', #default port is 1280
     'vspc_rest_user' => 'contoso\jdoe',
     'vspc_rest_pass' => 'password',
     'vspc_rest_timeout' => 10.0, #in seconds
