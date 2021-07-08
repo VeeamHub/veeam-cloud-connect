@@ -25,7 +25,7 @@ return [
         'message' => "You'll receive an email shortly with connection information."
     ),
     'message_success_disabled' => array(
-        #provisioning success w/account enabled
+        #provisioning success w/account disabled (see 'tenant_enabled' value)
         'title' => 'Account provisioned successfully!',
         'message' => "You'll receive an email within the next 48 hours with connection information."
     ),
