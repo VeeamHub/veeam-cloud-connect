@@ -72,7 +72,7 @@ require 'vendor/autoload.php';
                 </label>
               </div>
             </div>
-            <button type="submit" class="btn btn-default">Create account</button>
+            <button type="submit" class="btn btn-outline-secondary">Create account</button>
           </form>
         </div>
         <div id="loading" style="display:none;">
